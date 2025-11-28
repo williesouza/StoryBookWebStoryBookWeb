@@ -7,76 +7,34 @@ import { story } from '../data/story';
 const StoryViewer = () => {
     const [currentPage, setCurrentPage] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [speech, setSpeech] = useState(null);
     const [showScrollIndicator, setShowScrollIndicator] = useState(true);
     const [isFlipping, setIsFlipping] = useState(false);
     const [showIndex, setShowIndex] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
-    const [voicesReady, setVoicesReady] = useState(false);
     const textScrollRef = useRef(null);
 
-    // Initialize voices and ensure they are loaded
+
+    // Auto-play text when page changes using ResponsiveVoice
     useEffect(() => {
-        const loadVoices = () => {
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) {
-                setVoicesReady(true);
+        const playText = () => {
+            if (!isMuted && window.responsiveVoice) {
+                // Stop any currently playing speech
+                window.responsiveVoice.cancel();
+
+                // Speak the current page text
+                window.responsiveVoice.speak(
+                    story[currentPage].text,
+                    "Brazilian Portuguese Female",
+                    {
+                        rate: 1.0,
+                        pitch: 1.0,
+                        volume: 1.0,
+                        onstart: () => setIsPlaying(true),
+                        onend: () => setIsPlaying(false),
+                    }
+                );
             }
         };
-
-        loadVoices();
-        window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
-        return () => window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
-    }, []);
-
-    useEffect(() => {
-        // Stop any ongoing speech when component unmounts or page changes
-        window.speechSynthesis.cancel();
-
-        const text = story[currentPage].text;
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'pt-BR';
-        utterance.rate = 1.0;
-
-        // Set female voice preference
-        const voices = window.speechSynthesis.getVoices();
-        const femaleVoice = voices.find(voice =>
-            voice.lang.includes('pt-BR') &&
-            (voice.name.toLowerCase().includes('female') ||
-                voice.name.toLowerCase().includes('feminina') ||
-                voice.name.toLowerCase().includes('luciana') ||
-                voice.name.toLowerCase().includes('maria'))
-        ) || voices.find(voice => voice.lang.includes('pt-BR'));
-
-        if (femaleVoice) {
-            utterance.voice = femaleVoice;
-        }
-
-        utterance.onend = () => {
-            setIsPlaying(false);
-        };
-
-        setSpeech(utterance);
-
-        // Auto-play on page load and page change (only if not muted)
-        if (!isMuted) {
-            const speakWhenReady = () => {
-                const currentVoices = window.speechSynthesis.getVoices();
-                if (currentVoices.length > 0) {
-                    // Re-assign voice just in case
-                    if (!utterance.voice && femaleVoice) {
-                        utterance.voice = femaleVoice;
-                    }
-                    window.speechSynthesis.speak(utterance);
-                    setIsPlaying(true);
-                } else {
-                    setTimeout(speakWhenReady, 100);
-                }
-            };
-
-            // Small delay to ensure browser is ready
-            setTimeout(speakWhenReady, 100);
-        }
 
         // Reset scroll position when page changes
         if (textScrollRef.current) {
@@ -88,22 +46,26 @@ const StoryViewer = () => {
             }
         }
 
+        // Small delay to ensure ResponsiveVoice is loaded
+        setTimeout(playText, 100);
+
         checkScroll();
         window.addEventListener('resize', checkScroll);
-        return () => window.removeEventListener('resize', checkScroll);
-    }, [currentPage, isMuted]); // Re-run when page changes or mute state changes (to stop if muted)
+        return () => {
+            window.removeEventListener('resize', checkScroll);
+            if (window.responsiveVoice) {
+                window.responsiveVoice.cancel();
+            }
+        };
+    }, [currentPage, isMuted]);
 
     const toggleMute = () => {
         const newMutedState = !isMuted;
         setIsMuted(newMutedState);
 
-        if (newMutedState) {
-            window.speechSynthesis.cancel();
+        if (newMutedState && window.responsiveVoice) {
+            window.responsiveVoice.cancel();
             setIsPlaying(false);
-        } else {
-            // If unmuting, we could optionally start playing, but let's just let the user play manually
-            // or we could replay the current page. Let's keep it simple: just unmute.
-            // If the user wants to hear, they can click play.
         }
     };
 
@@ -123,14 +85,21 @@ const StoryViewer = () => {
     };
 
     const togglePlay = () => {
-        if (isPlaying) {
-            window.speechSynthesis.cancel();
+        if (isPlaying && window.responsiveVoice) {
+            window.responsiveVoice.cancel();
             setIsPlaying(false);
-        } else {
-            if (speech && !isMuted) {
-                window.speechSynthesis.speak(speech);
-                setIsPlaying(true);
-            }
+        } else if (!isMuted && window.responsiveVoice) {
+            window.responsiveVoice.speak(
+                story[currentPage].text,
+                "Brazilian Portuguese Female",
+                {
+                    rate: 1.0,
+                    pitch: 1.0,
+                    volume: 1.0,
+                    onstart: () => setIsPlaying(true),
+                    onend: () => setIsPlaying(false),
+                }
+            );
         }
     };
 
@@ -148,7 +117,9 @@ const StoryViewer = () => {
             setTimeout(() => {
                 setCurrentPage(prev => prev + 1);
                 setIsPlaying(false);
-                window.speechSynthesis.cancel();
+                if (window.responsiveVoice) {
+                    window.responsiveVoice.cancel();
+                }
             }, 450);
 
             // Remove animation class
@@ -175,7 +146,9 @@ const StoryViewer = () => {
             setTimeout(() => {
                 setCurrentPage(prev => prev - 1);
                 setIsPlaying(false);
-                window.speechSynthesis.cancel();
+                if (window.responsiveVoice) {
+                    window.responsiveVoice.cancel();
+                }
             }, 450);
 
             // Remove animation class
@@ -189,10 +162,21 @@ const StoryViewer = () => {
     };
 
     const handleReplay = () => {
-        window.speechSynthesis.cancel();
-        if (speech && !isMuted) {
-            window.speechSynthesis.speak(speech);
-            setIsPlaying(true);
+        if (window.responsiveVoice) {
+            window.responsiveVoice.cancel();
+        }
+        if (!isMuted && window.responsiveVoice) {
+            window.responsiveVoice.speak(
+                story[currentPage].text,
+                "Brazilian Portuguese Female",
+                {
+                    rate: 1.0,
+                    pitch: 1.0,
+                    volume: 1.0,
+                    onstart: () => setIsPlaying(true),
+                    onend: () => setIsPlaying(false),
+                }
+            );
         }
     };
 
@@ -200,7 +184,9 @@ const StoryViewer = () => {
         if (pageIndex !== currentPage && !isFlipping) {
             setCurrentPage(pageIndex);
             setIsPlaying(false);
-            window.speechSynthesis.cancel();
+            if (window.responsiveVoice) {
+                window.responsiveVoice.cancel();
+            }
             setShowIndex(false);
         }
     };
