@@ -17,7 +17,10 @@ const StoryViewer = () => {
     // Auto-play text when page changes using ResponsiveVoice
     useEffect(() => {
         const playText = () => {
+            console.log('ResponsiveVoice available:', !!window.responsiveVoice);
+
             if (!isMuted && window.responsiveVoice) {
+                console.log('Attempting to speak with ResponsiveVoice');
                 // Stop any currently playing speech
                 window.responsiveVoice.cancel();
 
@@ -29,10 +32,18 @@ const StoryViewer = () => {
                         rate: 1.0,
                         pitch: 1.0,
                         volume: 1.0,
-                        onstart: () => setIsPlaying(true),
-                        onend: () => setIsPlaying(false),
+                        onstart: () => {
+                            console.log('Speech started');
+                            setIsPlaying(true);
+                        },
+                        onend: () => {
+                            console.log('Speech ended');
+                            setIsPlaying(false);
+                        },
                     }
                 );
+            } else {
+                console.log('ResponsiveVoice not available or muted');
             }
         };
 
@@ -46,8 +57,8 @@ const StoryViewer = () => {
             }
         }
 
-        // Small delay to ensure ResponsiveVoice is loaded
-        setTimeout(playText, 100);
+        // Longer delay to ensure ResponsiveVoice is loaded
+        setTimeout(playText, 1000);
 
         checkScroll();
         window.addEventListener('resize', checkScroll);
