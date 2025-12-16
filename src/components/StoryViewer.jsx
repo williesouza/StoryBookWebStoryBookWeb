@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, ChevronDown, Menu, X, Volume2, VolumeX } from 'lucide-react';
 import { story } from '../data/story';
+import { useWebSpeech } from '../hooks/useWebSpeech';
 
 
 const StoryViewer = () => {
@@ -13,69 +14,47 @@ const StoryViewer = () => {
     const [isMuted, setIsMuted] = useState(false);
     const textScrollRef = useRef(null);
 
+    // Use optimized Web Speech API for TTS
+    const { isReady: voiceReady, speak: voiceSpeak, cancel: voiceCancel } = useWebSpeech();
 
-    // Auto-play text when page changes using ResponsiveVoice
+
+    // Auto-play text when page changes using Web Speech API
     useEffect(() => {
-        const playText = () => {
-            console.log('ResponsiveVoice available:', !!window.responsiveVoice);
-
-            if (!isMuted && window.responsiveVoice) {
-                console.log('Attempting to speak with ResponsiveVoice');
-                // Stop any currently playing speech
-                window.responsiveVoice.cancel();
-
-                // Speak the current page text
-                window.responsiveVoice.speak(
-                    story[currentPage].text,
-                    "Brazilian Portuguese Female",
-                    {
-                        rate: 1.0,
-                        pitch: 1.0,
-                        volume: 1.0,
-                        onstart: () => {
-                            console.log('Speech started');
-                            setIsPlaying(true);
-                        },
-                        onend: () => {
-                            console.log('Speech ended');
-                            setIsPlaying(false);
-                        },
-                    }
-                );
-            } else {
-                console.log('ResponsiveVoice not available or muted');
-            }
-        };
-
         // Reset scroll position when page changes
         if (textScrollRef.current) {
             textScrollRef.current.scrollTop = 0;
             setShowScrollIndicator(true);
-            if (textScrollRef.current) {
-                const { scrollHeight, clientHeight } = textScrollRef.current;
-                setShowScrollIndicator(scrollHeight > clientHeight);
-            }
+            const { scrollHeight, clientHeight } = textScrollRef.current;
+            setShowScrollIndicator(scrollHeight > clientHeight);
         }
 
-        // Longer delay to ensure ResponsiveVoice is loaded
-        setTimeout(playText, 1000);
+        // Play text if not muted and voice is ready
+        if (!isMuted && voiceReady) {
+            voiceSpeak(story[currentPage].text, {
+                onStart: () => setIsPlaying(true),
+                onEnd: () => setIsPlaying(false),
+                onError: () => setIsPlaying(false)
+            }).catch(error => {
+                console.error('Failed to speak:', error);
+                setIsPlaying(false);
+            });
+        }
 
         checkScroll();
         window.addEventListener('resize', checkScroll);
+
         return () => {
             window.removeEventListener('resize', checkScroll);
-            if (window.responsiveVoice) {
-                window.responsiveVoice.cancel();
-            }
+            voiceCancel();
         };
-    }, [currentPage, isMuted]);
+    }, [currentPage, isMuted, voiceReady, voiceSpeak, voiceCancel]);
 
     const toggleMute = () => {
         const newMutedState = !isMuted;
         setIsMuted(newMutedState);
 
-        if (newMutedState && window.responsiveVoice) {
-            window.responsiveVoice.cancel();
+        if (newMutedState) {
+            voiceCancel();
             setIsPlaying(false);
         }
     };
@@ -96,21 +75,14 @@ const StoryViewer = () => {
     };
 
     const togglePlay = () => {
-        if (isPlaying && window.responsiveVoice) {
-            window.responsiveVoice.cancel();
+        if (isPlaying) {
+            voiceCancel();
             setIsPlaying(false);
-        } else if (!isMuted && window.responsiveVoice) {
-            window.responsiveVoice.speak(
-                story[currentPage].text,
-                "Brazilian Portuguese Female",
-                {
-                    rate: 1.0,
-                    pitch: 1.0,
-                    volume: 1.0,
-                    onstart: () => setIsPlaying(true),
-                    onend: () => setIsPlaying(false),
-                }
-            );
+        } else if (!isMuted && voiceReady) {
+            voiceSpeak(story[currentPage].text, {
+                onStart: () => setIsPlaying(true),
+                onEnd: () => setIsPlaying(false)
+            });
         }
     };
 
@@ -128,9 +100,7 @@ const StoryViewer = () => {
             setTimeout(() => {
                 setCurrentPage(prev => prev + 1);
                 setIsPlaying(false);
-                if (window.responsiveVoice) {
-                    window.responsiveVoice.cancel();
-                }
+                voiceCancel();
             }, 450);
 
             // Remove animation class
@@ -157,9 +127,7 @@ const StoryViewer = () => {
             setTimeout(() => {
                 setCurrentPage(prev => prev - 1);
                 setIsPlaying(false);
-                if (window.responsiveVoice) {
-                    window.responsiveVoice.cancel();
-                }
+                voiceCancel();
             }, 450);
 
             // Remove animation class
@@ -173,21 +141,12 @@ const StoryViewer = () => {
     };
 
     const handleReplay = () => {
-        if (window.responsiveVoice) {
-            window.responsiveVoice.cancel();
-        }
-        if (!isMuted && window.responsiveVoice) {
-            window.responsiveVoice.speak(
-                story[currentPage].text,
-                "Brazilian Portuguese Female",
-                {
-                    rate: 1.0,
-                    pitch: 1.0,
-                    volume: 1.0,
-                    onstart: () => setIsPlaying(true),
-                    onend: () => setIsPlaying(false),
-                }
-            );
+        voiceCancel();
+        if (!isMuted && voiceReady) {
+            voiceSpeak(story[currentPage].text, {
+                onStart: () => setIsPlaying(true),
+                onEnd: () => setIsPlaying(false)
+            });
         }
     };
 
@@ -195,9 +154,7 @@ const StoryViewer = () => {
         if (pageIndex !== currentPage && !isFlipping) {
             setCurrentPage(pageIndex);
             setIsPlaying(false);
-            if (window.responsiveVoice) {
-                window.responsiveVoice.cancel();
-            }
+            voiceCancel();
             setShowIndex(false);
         }
     };
